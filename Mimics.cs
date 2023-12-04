@@ -176,8 +176,8 @@ namespace Mimics
                     }
 
                     // Sometimes we need to spawn a mimic near spawn for testing
-                    if (mIndex == 0)
-                        mimic.transform.position = new Vector3(-7f, 0f, -10f);
+                    //if (mIndex == 0)
+                    //    mimic.transform.position = new Vector3(-7f, 0f, -10f);
 
                     // We can handle networking by just indexing the mimics
                     MimicDoor.allMimics.Add(mimicDoor);
