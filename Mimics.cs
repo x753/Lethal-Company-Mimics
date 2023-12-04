@@ -20,7 +20,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "1.0.0";
+        private const string modVersion = "1.0.1";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -176,8 +176,8 @@ namespace Mimics
                     }
 
                     // Sometimes we need to spawn a mimic near spawn for testing
-                    //if (mIndex == 0)
-                    //    mimic.transform.position = new Vector3(-7f, 0f, -10f);
+                    if (mIndex == 0)
+                        mimic.transform.position = new Vector3(-7f, 0f, -10f);
 
                     // We can handle networking by just indexing the mimics
                     MimicDoor.allMimics.Add(mimicDoor);
@@ -337,11 +337,6 @@ namespace Mimics
 
             PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
 
-            if (player.deadBody != null)
-            {
-                player.deadBody = null;
-            }
-
             mimicAnimator.SetTrigger("Attack");
 
             playerTarget.transform.position = player.transform.position;
@@ -392,7 +387,8 @@ namespace Mimics
                 player.deadBody.attachedTo = null;
                 player.deadBody.attachedLimb = null;
                 player.deadBody.matchPositionExactly = false;
-                player.deadBody.gameObject.SetActive(false);
+                player.deadBody.transform.GetChild(0).gameObject.SetActive(false); // don't set the dead body itself inactive or it won't get cleaned up later
+                player.deadBody = null;
             }
 
             yield return new WaitForSeconds(5f);
