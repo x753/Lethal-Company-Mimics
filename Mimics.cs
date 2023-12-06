@@ -12,6 +12,7 @@ using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Events;
 using UnityEngine.Audio;
+using BepInEx.Configuration;
 
 namespace Mimics
 {
@@ -20,7 +21,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "1.0.1";
+        private const string modVersion = "1.1.1";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -28,6 +29,10 @@ namespace Mimics
 
         public static GameObject MimicPrefab;
         public static GameObject MimicNetworkerPrefab;
+
+        public static int[] SpawnRates;
+        public static int DifficultyLevel;
+        public static bool MimicPerfection;
 
         private void Awake()
         {
@@ -42,6 +47,23 @@ namespace Mimics
 
             harmony.PatchAll();
             Logger.LogInfo($"Plugin {modName} is loaded!");
+
+            // Handle configs
+            SpawnRates = new int[] {
+                Config.Bind("Spawn Rate", "Zero Mimics", 1, "Weight of zero mimics spawning").Value,
+                Config.Bind("Spawn Rate", "One Mimic", 64, "Weight of one mimic spawning").Value,
+                Config.Bind("Spawn Rate", "Two Mimics", 29, "Weight of two mimics spawning").Value,
+                Config.Bind("Spawn Rate", "Three Mimics", 4, "Weight of three mimics spawning").Value,
+                Config.Bind("Spawn Rate", "Four Mimics", 1, "Weight of four mimics spawning").Value,
+                Config.Bind("Spawn Rate", "Five Mimics", 1, "Weight of five mimics spawning").Value,
+                Config.Bind("Spawn Rate", "Maximum Mimics", 0, "Weight of maximum mimics spawning").Value
+            };
+
+            DifficultyLevel = Config.Bind("Difficulty", "Difficulty Level", 4, "How many different possibilities for imperfections should mimics have? Max 6. Anything lower than 5 is for cowards.").Value;
+            if (DifficultyLevel < 1) { DifficultyLevel = 1; }
+            if (DifficultyLevel > 6) { DifficultyLevel = 6; }
+
+            MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be identical to the real thing in every way. NOT RECOMMENDED.").Value;
 
             // UnityNetcodeWeaver patch requires this
             var types = Assembly.GetExecutingAssembly().GetTypes();
@@ -121,14 +143,14 @@ namespace Mimics
 
                             if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.up}))
                             {
-                                if (otherTile.name.Contains("Catwalk") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("ElevatorConnector") || (otherTile.name.Contains("StartRoom") && !otherTile.name.Contains("Manor")))
+                                if (otherTile.name.Contains("Catwalk") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || (otherTile.name.Contains("StartRoom") && !otherTile.name.Contains("Manor")))
                                 {
                                     badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
                                 }
                             }
-                            if (otherTile.Placement.Bounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.down }))
+                            if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.down }))
                             {
-                                if (otherTile.name.Contains("MediumRoomHallway1B") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4") || otherTile.name.Contains("ElevatorConnector") || otherTile.name.Contains("StartRoom"))
+                                if (otherTile.name.Contains("MediumRoomHallway1B") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || otherTile.name.Contains("StartRoom"))
                                 {
                                     badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
                                 }
@@ -147,9 +169,33 @@ namespace Mimics
                 {
                     GameObject alleyExitDoorContainer = doorway.GetComponentInChildren<SpawnSyncedObject>(true).transform.parent.gameObject;
 
-                    if (StartOfRound.Instance.randomMapSeed % 3 < mIndex && StartOfRound.Instance.randomMapSeed % 753 != 0)
+                    // Spawn a number of mimics based on the spawn weights
                     {
-                        return; // only spawn between 1 and 3 mimics, unless we have a multiple of 753 seed, in which case spawn them all
+                        int numMimics = 0;
+
+                        int totalWeight = 0;
+                        foreach (int rate in SpawnRates)
+                        {
+                            totalWeight += rate;
+                        }
+                        System.Random random = new System.Random(StartOfRound.Instance.randomMapSeed + 753);
+                        int randomSpawnRate = random.Next(0, totalWeight);
+
+                        int accumulatedWeight = 0;
+                        for (int i = 0; i < SpawnRates.Length; i++)
+                        {
+                            if (randomSpawnRate < SpawnRates[i] + accumulatedWeight)
+                            {
+                                numMimics = i;
+                                break;
+                            }
+                            accumulatedWeight += SpawnRates[i];
+                        }
+
+                        if (numMimics == mIndex && numMimics != 6)
+                        {
+                            return;
+                        }
                     }
 
                     bool locationAlreadyUsed = false;
@@ -176,8 +222,8 @@ namespace Mimics
                     }
 
                     // Sometimes we need to spawn a mimic near spawn for testing
-                    if (mIndex == 0)
-                        mimic.transform.position = new Vector3(-7f, 0f, -10f);
+                    //if (mIndex == 0)
+                    //    mimic.transform.position = new Vector3(-7f, 0f, -10f);
 
                     // We can handle networking by just indexing the mimics
                     MimicDoor.allMimics.Add(mimicDoor);
@@ -211,41 +257,47 @@ namespace Mimics
                     mimicDoor.interactTrigger.onInteract = new InteractEvent();
                     mimicDoor.interactTrigger.onInteract.AddListener(mimicDoor.TouchMimic);
 
-                    // Randomly assign an imperfection to the mimic
-                    int imperfectionIndex = (StartOfRound.Instance.randomMapSeed + mIndex * 2) % 10; // get last digit
-                    switch (imperfectionIndex)
+                    if(!MimicPerfection)
                     {
-                        case 1:
-                        case 2:
-                            light.colorTemperature += (10 + imperfectionIndex) * 200;
-                            break;
+                        // Randomly assign an imperfection to the mimic
+                        System.Random random = new System.Random(StartOfRound.Instance.randomMapSeed + mIndex);
+                        int imperfectionIndex = random.Next(0, DifficultyLevel);
 
-                        case 3:
-                        case 4:
-                            mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.489f, 0.1415526f + ((7 + imperfectionIndex) / 100f), 0.1479868f);
-                            mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.489f, 0.1415526f + ((7 + imperfectionIndex) / 100f), 0.1479868f);
-                            break;
+                        switch (imperfectionIndex)
+                        {
+                            case 0:
+                                mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.489f, 0.2415526f, 0.1479868f);
+                                mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.489f, 0.2415526f, 0.1479868f);
+                                break;
 
-                        case 5:
-                        case 6:
-                            mimicDoor.interactTrigger.timeToHold = 1.7f;
-                            break;
+                            case 1:
+                                light.transform.parent.GetComponent<Renderer>().materials[1].color = new Color(0f, 0f, 0f);
+                                light.transform.parent.GetComponent<Renderer>().materials[1].SetColor("_EmissiveColor", new Color(7.3772f, 0.4f, 0f));
+                                light.colorTemperature += 1000;
+                                break;
 
-                        case 7:
-                        case 8:
-                            mimicDoor.interactTrigger.hoverTip = "Feed : [LMB]";
-                            mimicDoor.interactTrigger.holdTip = "Feed : [LMB]";
-                            break;
+                            case 2:
+                                mimicDoor.interactTrigger.hoverTip = "Feed : [LMB]";
+                                mimicDoor.interactTrigger.holdTip = "Feed : [LMB]";
+                                break;
 
-                        case 9:
-                        case 0:
-                            mimicDoor.interactTrigger.holdTip = "DIE : [LMB]";
-                            mimicDoor.interactTrigger.timeToHold = 0.5f;
-                            break;
+                            case 3:
+                                mimicDoor.interactTrigger.hoverIcon = mimicDoor.LostFingersIcon;
+                                break;
 
-                        default:
-                            mimicDoor.interactTrigger.hoverTip = "BUG, REPORT TO DEVELOPER";
-                            break;
+                            case 4:
+                                mimicDoor.interactTrigger.holdTip = "DIE : [LMB]";
+                                mimicDoor.interactTrigger.timeToHold = 0.5f;
+                                break;
+
+                            case 5:
+                                mimicDoor.interactTrigger.timeToHold = 1.7f;
+                                break;
+
+                            default:
+                                mimicDoor.interactTrigger.hoverTip = "BUG, REPORT TO DEVELOPER";
+                                break;
+                        }
                     }
                 }
             }
@@ -307,6 +359,8 @@ namespace Mimics
 
         public BoxCollider frameBox;
 
+        public Sprite LostFingersIcon;
+
         public Animator mimicAnimator;
 
         public GameObject grabPoint;
@@ -360,7 +414,7 @@ namespace Mimics
 
             yield return new WaitForSeconds(0.2f);
 
-            if (player.IsOwner)
+            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 30f)
             {
                 player.KillPlayer(Vector3.zero, true, CauseOfDeath.Unknown, 0);
             }
@@ -371,7 +425,7 @@ namespace Mimics
             if (player.deadBody != null)
             {
                 player.deadBody.attachedTo = grabPoint.transform;
-                player.deadBody.attachedLimb = player.deadBody.bodyParts[6];
+                player.deadBody.attachedLimb = player.deadBody.bodyParts[5];
                 player.deadBody.matchPositionExactly = true;
 
                 for (int i = 0; i < player.deadBody.bodyParts.Length; i++)
@@ -391,7 +445,7 @@ namespace Mimics
                 player.deadBody = null;
             }
 
-            yield return new WaitForSeconds(5f);
+            yield return new WaitForSeconds(4.5f);
             attacking = false;
             interactTrigger.interactable = true;
             yield break;
