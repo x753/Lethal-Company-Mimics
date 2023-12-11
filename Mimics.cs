@@ -21,7 +21,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "1.1.1";
+        private const string modVersion = "2.0.0";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -31,8 +31,8 @@ namespace Mimics
         public static GameObject MimicNetworkerPrefab;
 
         public static int[] SpawnRates;
-        public static int DifficultyLevel;
         public static bool MimicPerfection;
+        public static float MimicVolume;
 
         private void Awake()
         {
@@ -49,21 +49,23 @@ namespace Mimics
             Logger.LogInfo($"Plugin {modName} is loaded!");
 
             // Handle configs
-            SpawnRates = new int[] {
-                Config.Bind("Spawn Rate", "Zero Mimics", 1, "Weight of zero mimics spawning").Value,
-                Config.Bind("Spawn Rate", "One Mimic", 64, "Weight of one mimic spawning").Value,
-                Config.Bind("Spawn Rate", "Two Mimics", 29, "Weight of two mimics spawning").Value,
-                Config.Bind("Spawn Rate", "Three Mimics", 4, "Weight of three mimics spawning").Value,
-                Config.Bind("Spawn Rate", "Four Mimics", 1, "Weight of four mimics spawning").Value,
-                Config.Bind("Spawn Rate", "Five Mimics", 1, "Weight of five mimics spawning").Value,
-                Config.Bind("Spawn Rate", "Maximum Mimics", 0, "Weight of maximum mimics spawning").Value
-            };
+            {
+                SpawnRates = new int[] {
+                    Config.Bind("Spawn Rate", "Zero Mimics", 20, "Weight of zero mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "One Mimic", 70, "Weight of one mimic spawning").Value,
+                    Config.Bind("Spawn Rate", "Two Mimics", 8, "Weight of two mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Three Mimics", 1, "Weight of three mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Four Mimics", 1, "Weight of four mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Five Mimics", 0, "Weight of five mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Maximum Mimics", 0, "Weight of maximum mimics spawning").Value
+                };
 
-            DifficultyLevel = Config.Bind("Difficulty", "Difficulty Level", 4, "How many different possibilities for imperfections should mimics have? Max 6. Anything lower than 5 is for cowards.").Value;
-            if (DifficultyLevel < 1) { DifficultyLevel = 1; }
-            if (DifficultyLevel > 6) { DifficultyLevel = 6; }
+                MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be the exact same color as the real thing.").Value;
 
-            MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be identical to the real thing in every way. NOT RECOMMENDED.").Value;
+                MimicVolume = Config.Bind("General", "SFX Volume", 100, "Volume of the mimic's SFX (0-100)").Value;
+                if (MimicVolume < 0) { MimicVolume = 0; }
+                if (MimicVolume > 100) { MimicVolume = 100; }
+            }
 
             // UnityNetcodeWeaver patch requires this
             var types = Assembly.GetExecutingAssembly().GetTypes();
@@ -167,8 +169,6 @@ namespace Mimics
                 List<Vector3> mimicLocations = new List<Vector3>();
                 foreach (Doorway doorway in validDoors)
                 {
-                    GameObject alleyExitDoorContainer = doorway.GetComponentInChildren<SpawnSyncedObject>(true).transform.parent.gameObject;
-
                     // Spawn a number of mimics based on the spawn weights
                     {
                         int numMimics = 0;
@@ -212,18 +212,20 @@ namespace Mimics
 
                     mimicLocations.Add(newLocation);
 
+                    GameObject alleyExitDoorContainer = doorway.GetComponentInChildren<SpawnSyncedObject>(true).transform.parent.gameObject;
+
                     GameObject mimic = Instantiate<GameObject>(MimicPrefab, doorway.transform);
                     mimic.transform.position = alleyExitDoorContainer.transform.position;
                     MimicDoor mimicDoor = mimic.GetComponent<MimicDoor>();
 
                     foreach (AudioSource audio in mimic.GetComponentsInChildren<AudioSource>(true))
                     {
+                        audio.volume = MimicVolume / 100f;
                         audio.outputAudioMixerGroup = StartOfRound.Instance.ship3DAudio.outputAudioMixerGroup;
                     }
 
                     // Sometimes we need to spawn a mimic near spawn for testing
-                    //if (mIndex == 0)
-                    //    mimic.transform.position = new Vector3(-7f, 0f, -10f);
+                    //if (mIndex == 0) { mimic.transform.position = new Vector3(-7f, 0f, -10f); }
 
                     // We can handle networking by just indexing the mimics
                     MimicDoor.allMimics.Add(mimicDoor);
@@ -257,47 +259,44 @@ namespace Mimics
                     mimicDoor.interactTrigger.onInteract = new InteractEvent();
                     mimicDoor.interactTrigger.onInteract.AddListener(mimicDoor.TouchMimic);
 
-                    if(!MimicPerfection)
+                    if (!MimicPerfection) // Slightly change the mimic's color unless the config wants perfectly identical mimics
                     {
-                        // Randomly assign an imperfection to the mimic
-                        System.Random random = new System.Random(StartOfRound.Instance.randomMapSeed + mIndex);
-                        int imperfectionIndex = random.Next(0, DifficultyLevel);
-
-                        switch (imperfectionIndex)
+                        if ((StartOfRound.Instance.randomMapSeed + mIndex) % 2 == 0)
                         {
-                            case 0:
-                                mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.489f, 0.2415526f, 0.1479868f);
-                                mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.489f, 0.2415526f, 0.1479868f);
-                                break;
-
-                            case 1:
-                                light.transform.parent.GetComponent<Renderer>().materials[1].color = new Color(0f, 0f, 0f);
-                                light.transform.parent.GetComponent<Renderer>().materials[1].SetColor("_EmissiveColor", new Color(7.3772f, 0.4f, 0f));
-                                light.colorTemperature += 1000;
-                                break;
-
-                            case 2:
-                                mimicDoor.interactTrigger.hoverTip = "Feed : [LMB]";
-                                mimicDoor.interactTrigger.holdTip = "Feed : [LMB]";
-                                break;
-
-                            case 3:
-                                mimicDoor.interactTrigger.hoverIcon = mimicDoor.LostFingersIcon;
-                                break;
-
-                            case 4:
-                                mimicDoor.interactTrigger.holdTip = "DIE : [LMB]";
-                                mimicDoor.interactTrigger.timeToHold = 0.5f;
-                                break;
-
-                            case 5:
-                                mimicDoor.interactTrigger.timeToHold = 1.7f;
-                                break;
-
-                            default:
-                                mimicDoor.interactTrigger.hoverTip = "BUG, REPORT TO DEVELOPER";
-                                break;
+                            mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.490566f, 0.1226415f, 0.1302275f); // original: new Color(0.489f, 0.1415526f, 0.1479868f);
+                            mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.4339623f, 0.1043965f, 0.1150277f); // original: new Color(0.427451f, 0.1254902f, 0.1294117f);
+                            light.colorTemperature = 1050;
                         }
+                        else
+                        {
+                            mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.5f, 0.1580188f, 0.1657038f); // original: new Color(0.489f, 0.1415526f, 0.1479868f);
+                            mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.4056604f, 0.1358579f, 0.1393619f); // original: new Color(0.427451f, 0.1254902f, 0.1294117f);
+                            light.colorTemperature = 1150;
+                        }
+                    }
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(SprayPaintItem))]
+        internal class SprayPaintItemPatch
+        {
+            static FieldInfo SprayHit = typeof(SprayPaintItem).GetField("sprayHit", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            [HarmonyPatch("SprayPaintClientRpc")]
+            [HarmonyPostfix]
+            static void SprayPaintClientRpcPatch(SprayPaintItem __instance, Vector3 sprayPos, Vector3 sprayRot)
+            {
+                RaycastHit raycastHit = (RaycastHit) SprayHit.GetValue(__instance);
+
+                if (raycastHit.collider.name == "MimicSprayCollider")
+                {
+                    MimicDoor mimic = raycastHit.collider.transform.parent.parent.GetComponent<MimicDoor>();
+                    mimic.sprayCount += 1;
+
+                    if (mimic.sprayCount > 9)
+                    {
+                        MimicNetworker.Instance.MimicAddAnger(1, mimic.mimicIndex);
                     }
                 }
             }
@@ -328,13 +327,13 @@ namespace Mimics
             Instance = this;
         }
 
-        public void MimicAttack(int playerId, int mimicIndex)
+        public void MimicAttack(int playerId, int mimicIndex, bool ownerOnly = false)
         {
             if (base.IsOwner)
             {
                 MimicNetworker.Instance.MimicAttackClientRpc(playerId, mimicIndex);
             }
-            else
+            else if(!ownerOnly)
             {
                 MimicNetworker.Instance.MimicAttackServerRpc(playerId, mimicIndex);
             }
@@ -350,6 +349,30 @@ namespace Mimics
         public void MimicAttackServerRpc(int playerId, int mimicIndex)
         {
             MimicNetworker.Instance.MimicAttackClientRpc(playerId, mimicIndex);
+        }
+
+        public void MimicAddAnger(int amount, int mimicIndex)
+        {
+            if (base.IsOwner)
+            {
+                MimicNetworker.Instance.MimicAddAngerClientRpc(amount, mimicIndex);
+            }
+            else
+            {
+                MimicNetworker.Instance.MimicAddAngerServerRpc(amount, mimicIndex);
+            }
+        }
+
+        [ClientRpc]
+        public void MimicAddAngerClientRpc(int amount, int mimicIndex)
+        {
+            StartCoroutine(MimicDoor.allMimics[mimicIndex].AddAnger(amount));
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        public void MimicAddAngerServerRpc(int amount, int mimicIndex)
+        {
+            MimicNetworker.Instance.MimicAddAngerClientRpc(amount, mimicIndex);
         }
     }
 
@@ -367,14 +390,16 @@ namespace Mimics
 
         public InteractTrigger interactTrigger;
 
+        public int anger = 0;
+
+        public bool angering = false;
+
+        public int sprayCount = 0;
+
         private bool attacking = false;
 
         public static List<MimicDoor> allMimics;
         public int mimicIndex;
-
-        private void Awake()
-        {
-        }
 
         public void TouchMimic(PlayerControllerB player)
         {
@@ -414,7 +439,7 @@ namespace Mimics
 
             yield return new WaitForSeconds(0.2f);
 
-            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 30f)
+            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 10f)
             {
                 player.KillPlayer(Vector3.zero, true, CauseOfDeath.Unknown, 0);
             }
@@ -449,6 +474,75 @@ namespace Mimics
             attacking = false;
             interactTrigger.interactable = true;
             yield break;
+        }
+
+        public IEnumerator AddAnger(int amount)
+        {
+            if (angering) { yield break; }
+            if (attacking) { yield break; }
+
+            angering = true;
+            anger += amount;
+
+            if (anger == 1)
+            {
+                Sprite oldIcon = interactTrigger.hoverIcon;
+                interactTrigger.hoverIcon = LostFingersIcon;
+                mimicAnimator.SetTrigger("Growl");
+                yield return new WaitForSeconds(2.75f);
+                interactTrigger.hoverIcon = oldIcon;
+
+                sprayCount = 0;
+                angering = false;
+                yield break;
+            }
+            else if (anger == 2)
+            {
+                interactTrigger.holdTip = "DIE : [LMB]";
+                interactTrigger.timeToHold = 0.25f;
+
+                Sprite oldIcon = interactTrigger.hoverIcon;
+                interactTrigger.hoverIcon = LostFingersIcon;
+                mimicAnimator.SetTrigger("Growl");
+                yield return new WaitForSeconds(2.75f);
+                interactTrigger.hoverIcon = oldIcon;
+
+                sprayCount = 0;
+                angering = false;
+                yield break;
+            }
+            else if (anger > 2)
+            {
+                PlayerControllerB closestPlayer = null;
+                float closestDistance = 9999f;
+                foreach (PlayerControllerB player in StartOfRound.Instance.allPlayerScripts)
+                {
+                    float distance = Vector3.Distance(this.transform.position, player.transform.position);
+                    if (distance < closestDistance)
+                    { 
+                        closestDistance = distance;
+                        closestPlayer = player;
+                    }
+                }
+                if (closestPlayer != null)
+                {
+                    MimicNetworker.Instance.MimicAttackClientRpc((int) closestPlayer.playerClientId, this.mimicIndex);
+                }
+            }
+
+            sprayCount = 0;
+            angering = false;
+            yield break;
+        }
+    }
+
+    public class MimicCollider : MonoBehaviour, IHittable
+    {
+        public MimicDoor mimic;
+
+        void IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false)
+        {
+            MimicNetworker.Instance.MimicAddAnger(1, mimic.mimicIndex);
         }
     }
 }
