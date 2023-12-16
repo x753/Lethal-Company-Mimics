@@ -21,7 +21,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.0.0";
+        private const string modVersion = "2.2.0";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -32,6 +32,8 @@ namespace Mimics
 
         public static int[] SpawnRates;
         public static bool MimicPerfection;
+        public static bool EasyMode;
+        public static bool ColorBlindMode;
         public static float MimicVolume;
 
         private void Awake()
@@ -51,20 +53,29 @@ namespace Mimics
             // Handle configs
             {
                 SpawnRates = new int[] {
-                    Config.Bind("Spawn Rate", "Zero Mimics", 20, "Weight of zero mimics spawning").Value,
-                    Config.Bind("Spawn Rate", "One Mimic", 70, "Weight of one mimic spawning").Value,
-                    Config.Bind("Spawn Rate", "Two Mimics", 8, "Weight of two mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Zero Mimics", 22, "Weight of zero mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "One Mimic", 69, "Weight of one mimic spawning").Value,
+                    Config.Bind("Spawn Rate", "Two Mimics", 7, "Weight of two mimics spawning").Value,
                     Config.Bind("Spawn Rate", "Three Mimics", 1, "Weight of three mimics spawning").Value,
                     Config.Bind("Spawn Rate", "Four Mimics", 1, "Weight of four mimics spawning").Value,
                     Config.Bind("Spawn Rate", "Five Mimics", 0, "Weight of five mimics spawning").Value,
                     Config.Bind("Spawn Rate", "Maximum Mimics", 0, "Weight of maximum mimics spawning").Value
                 };
 
-                MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be the exact same color as the real thing.").Value;
+                MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be the exact same color as the real thing. Overrides all difficulty settings.").Value;
+
+                EasyMode = Config.Bind("Difficulty", "Easy Mode", false, "Each mimic will have one of several possible imperfections to help you tell if it's a mimic.").Value;
+
+                ColorBlindMode = Config.Bind("Difficulty", "Color Blind Mode", false, "Replaces all color differences with another way to differentiate mimics.").Value;
 
                 MimicVolume = Config.Bind("General", "SFX Volume", 100, "Volume of the mimic's SFX (0-100)").Value;
                 if (MimicVolume < 0) { MimicVolume = 0; }
                 if (MimicVolume > 100) { MimicVolume = 100; }
+
+                // This is necessary to delete old config entries that might confuse people
+                Config.Bind("Difficulty", "Difficulty Level", 0, "This is an old setting, ignore it.");
+                Config.Remove(Config["Difficulty", "Difficulty Level"].Definition);
+                Config.Save();
             }
 
             // UnityNetcodeWeaver patch requires this
@@ -259,19 +270,78 @@ namespace Mimics
                     mimicDoor.interactTrigger.onInteract = new InteractEvent();
                     mimicDoor.interactTrigger.onInteract.AddListener(mimicDoor.TouchMimic);
 
-                    if (!MimicPerfection) // Slightly change the mimic's color unless the config wants perfectly identical mimics
+                    // Handle all difficulty options here:
+                    if (!MimicPerfection)
                     {
-                        if ((StartOfRound.Instance.randomMapSeed + mIndex) % 2 == 0)
+                        mimicDoor.interactTrigger.timeToHold = 0.9f; // original: 0.8f;
+
+                        if (!ColorBlindMode)
                         {
-                            mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.490566f, 0.1226415f, 0.1302275f); // original: new Color(0.489f, 0.1415526f, 0.1479868f);
-                            mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.4339623f, 0.1043965f, 0.1150277f); // original: new Color(0.427451f, 0.1254902f, 0.1294117f);
-                            light.colorTemperature = 1050;
+                            // By default we'll just ever so slightly change the color
+                            if ((StartOfRound.Instance.randomMapSeed + mIndex) % 2 == 0)
+                            {
+                                mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.490566f, 0.1226415f, 0.1302275f); // original: new Color(0.489f, 0.1415526f, 0.1479868f);
+                                mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.4339623f, 0.1043965f, 0.1150277f); // original: new Color(0.427451f, 0.1254902f, 0.1294117f);
+                                light.colorTemperature = 1250;
+                            }
+                            else
+                            {
+                                mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.5f, 0.1580188f, 0.1657038f); // original: new Color(0.489f, 0.1415526f, 0.1479868f);
+                                mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.4056604f, 0.1358579f, 0.1393619f); // original: new Color(0.427451f, 0.1254902f, 0.1294117f);
+                                light.colorTemperature = 1300;
+                            }
                         }
                         else
                         {
-                            mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.5f, 0.1580188f, 0.1657038f); // original: new Color(0.489f, 0.1415526f, 0.1479868f);
-                            mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.4056604f, 0.1358579f, 0.1393619f); // original: new Color(0.427451f, 0.1254902f, 0.1294117f);
-                            light.colorTemperature = 1150;
+                            // For color blind people change the interaction time instead
+                            if ((StartOfRound.Instance.randomMapSeed + mIndex) % 2 == 0)
+                            {
+                                mimicDoor.interactTrigger.timeToHold = 1.1f; // original: 0.8f;
+                            }
+                            else
+                            {
+                                mimicDoor.interactTrigger.timeToHold = 1f; // original: 0.8f;
+                            }
+                        }
+
+                        if (EasyMode)
+                        {
+                            // Randomly assign an imperfection to the mimic
+                            System.Random random = new System.Random(StartOfRound.Instance.randomMapSeed + mIndex);
+                            int imperfectionIndex = random.Next(0, 4);
+
+                            switch (imperfectionIndex)
+                            {
+                                case 0:
+                                    if (!ColorBlindMode)
+                                    {
+                                        mimic.GetComponentsInChildren<MeshRenderer>()[0].material.color = new Color(0.489f, 0.2415526f, 0.1479868f);
+                                        mimic.GetComponentsInChildren<MeshRenderer>()[1].material.color = new Color(0.489f, 0.2415526f, 0.1479868f);
+                                    }
+                                    else
+                                    {
+                                        mimicDoor.interactTrigger.timeToHold = 1.5f;
+                                    }
+                                    break;
+
+                                case 1:
+                                    mimicDoor.interactTrigger.hoverTip = "Feed : [LMB]";
+                                    mimicDoor.interactTrigger.holdTip = "Feed : [LMB]";
+                                    break;
+
+                                case 2:
+                                    mimicDoor.interactTrigger.hoverIcon = mimicDoor.LostFingersIcon;
+                                    break;
+
+                                case 3:
+                                    mimicDoor.interactTrigger.holdTip = "DIE : [LMB]";
+                                    mimicDoor.interactTrigger.timeToHold = 0.5f;
+                                    break;
+
+                                default:
+                                    mimicDoor.interactTrigger.hoverTip = "BUG, REPORT TO DEVELOPER";
+                                    break;
+                            }
                         }
                     }
                 }
@@ -289,7 +359,7 @@ namespace Mimics
             {
                 RaycastHit raycastHit = (RaycastHit) SprayHit.GetValue(__instance);
 
-                if (raycastHit.collider.name == "MimicSprayCollider")
+                if (raycastHit.collider != null && raycastHit.collider.name == "MimicSprayCollider")
                 {
                     MimicDoor mimic = raycastHit.collider.transform.parent.parent.GetComponent<MimicDoor>();
                     mimic.sprayCount += 1;
@@ -439,7 +509,7 @@ namespace Mimics
 
             yield return new WaitForSeconds(0.2f);
 
-            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 10f)
+            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 8.75f)
             {
                 player.KillPlayer(Vector3.zero, true, CauseOfDeath.Unknown, 0);
             }
@@ -542,7 +612,43 @@ namespace Mimics
 
         void IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false)
         {
-            MimicNetworker.Instance.MimicAddAnger(1, mimic.mimicIndex);
+            MimicNetworker.Instance.MimicAddAnger(force, mimic.mimicIndex);
+        }
+    }
+
+    public class MimicListener : MonoBehaviour, INoiseListener
+    {
+        public MimicDoor mimic;
+
+        private int tolerance = 100;
+
+        void INoiseListener.DetectNoise(Vector3 noisePosition, float noiseLoudness, int timesPlayedInOneSpot, int noiseID)
+        {
+            if ((noiseLoudness >= 0.9f || noiseID == 101158) && Vector3.Distance(noisePosition, mimic.transform.position) < 5f)
+            {
+                if (noiseID == 75) // player voice
+                {
+                    tolerance -= 1;
+                }
+                else if (noiseID == 5) // boombox
+                {
+                    tolerance -= 15;
+                }
+                else if (noiseID == 101158) // whoopie cushion
+                {
+                    tolerance -= 35;
+                }
+                else
+                {
+                    tolerance -= 30; // others such as the clown horn
+                }
+
+                if (tolerance <= 0)
+                {
+                    tolerance = 100;
+                    MimicNetworker.Instance.MimicAddAnger(1, mimic.mimicIndex);
+                }
+            }
         }
     }
 }
