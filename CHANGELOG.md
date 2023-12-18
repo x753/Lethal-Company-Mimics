@@ -1,3 +1,7 @@
+## v2.2.1 Config syncing
+- Mimic spawn rate config settings now sync with the host
+- Added a config option to increase mimic spawn rate dynamically
+
 ## v2.2.0 Shhhhh
 - Added a new mechanic to detect mimics
 
@@ -10,6 +14,8 @@
 - Mimics no longer have a randomly chosen imperfection
 - There are new strategies to determine if something is a mimic
 
+<details><summary>Older Versions</summary>
+
 ## v1.1.2 Configs are here!
 - Added config options for difficulty (# of possible imperfections), volume, and spawn rate
 - Slightly reduced mimic spawn rate
@@ -18,3 +24,5 @@
 
 ## v1.0.0 Release 😎
 - Lots of mimics spawn so people can find them quicker
+
+</details>

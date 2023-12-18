@@ -21,7 +21,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.2.0";
+        private const string modVersion = "2.2.1";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -35,6 +35,7 @@ namespace Mimics
         public static bool EasyMode;
         public static bool ColorBlindMode;
         public static float MimicVolume;
+        public static bool DynamicSpawnRate;
 
         private void Awake()
         {
@@ -53,14 +54,15 @@ namespace Mimics
             // Handle configs
             {
                 SpawnRates = new int[] {
-                    Config.Bind("Spawn Rate", "Zero Mimics", 22, "Weight of zero mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Zero Mimics", 23, "Weight of zero mimics spawning").Value,
                     Config.Bind("Spawn Rate", "One Mimic", 69, "Weight of one mimic spawning").Value,
                     Config.Bind("Spawn Rate", "Two Mimics", 7, "Weight of two mimics spawning").Value,
                     Config.Bind("Spawn Rate", "Three Mimics", 1, "Weight of three mimics spawning").Value,
-                    Config.Bind("Spawn Rate", "Four Mimics", 1, "Weight of four mimics spawning").Value,
-                    Config.Bind("Spawn Rate", "Five Mimics", 0, "Weight of five mimics spawning").Value,
+                    Config.Bind("Spawn Rate", "Four Mimics", 0, "Weight of four mimics spawning").Value,
                     Config.Bind("Spawn Rate", "Maximum Mimics", 0, "Weight of maximum mimics spawning").Value
                 };
+
+                DynamicSpawnRate = Config.Bind("Spawn Rate", "Dynamic Spawn Rate", true, "Increases mimic spawn rate based on dungeon size and the number of instances of the real thing.").Value;
 
                 MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be the exact same color as the real thing. Overrides all difficulty settings.").Value;
 
@@ -75,6 +77,8 @@ namespace Mimics
                 // This is necessary to delete old config entries that might confuse people
                 Config.Bind("Difficulty", "Difficulty Level", 0, "This is an old setting, ignore it.");
                 Config.Remove(Config["Difficulty", "Difficulty Level"].Definition);
+                Config.Bind("Spawn Rate", "Five Mimics", 0, "This is an old setting, ignore it.");
+                Config.Remove(Config["Spawn Rate", "Five Mimics"].Definition);
                 Config.Save();
             }
 
@@ -105,6 +109,30 @@ namespace Mimics
             }
         }
 
+        [HarmonyPatch(typeof(StartOfRound))]
+        internal class StartOfRoundPatch
+        {
+            [HarmonyPatch("Start")]
+            [HarmonyPostfix]
+            static void StartPatch(ref StartOfRound __instance)
+            {
+                // Handle networking with a single game object
+                if (__instance.IsServer && MimicNetworker.Instance == null)
+                {
+                    GameObject mimicNetworker = Instantiate<GameObject>(MimicNetworkerPrefab);
+                    mimicNetworker.GetComponent<NetworkObject>().Spawn(true);
+
+                    MimicNetworker.SpawnWeight0.Value = SpawnRates[0];
+                    MimicNetworker.SpawnWeight1.Value = SpawnRates[1];
+                    MimicNetworker.SpawnWeight2.Value = SpawnRates[2];
+                    MimicNetworker.SpawnWeight3.Value = SpawnRates[3];
+                    MimicNetworker.SpawnWeight4.Value = SpawnRates[4];
+                    MimicNetworker.SpawnWeightMax.Value = SpawnRates[5];
+                    MimicNetworker.SpawnRateDynamic.Value = DynamicSpawnRate;
+                }
+            }
+        }
+
         [HarmonyPatch(typeof(RoundManager))]
         internal class RoundManagerPatch
         {
@@ -112,16 +140,52 @@ namespace Mimics
             [HarmonyPostfix]
             static void SetExitIDsPatch(ref RoundManager __instance, Vector3 mainEntrancePosition)
             {
-                // Handle networking with a single game object
-                if (__instance.IsServer && MimicNetworker.Instance == null)
-                {
-                    GameObject mimicNetworker = Instantiate<GameObject>(MimicNetworkerPrefab);
-                    mimicNetworker.GetComponent<NetworkObject>().Spawn(true);
-                }
                 MimicDoor.allMimics = new List<MimicDoor>();
                 int mIndex = 0;
 
                 Dungeon dungeon = __instance.dungeonGenerator.Generator.CurrentDungeon;
+                if (!dungeon.DungeonFlow.name.StartsWith("Level1") && !dungeon.DungeonFlow.name.StartsWith("Level2")) { return; } // do not spawn mimics for custom dungeon flows
+
+                // Spawn a number of mimics based on the spawn weights
+                int numMimics = 0;
+                {
+                    int[] spawnRates = new int[] { MimicNetworker.SpawnWeight0.Value, MimicNetworker.SpawnWeight1.Value, MimicNetworker.SpawnWeight2.Value, MimicNetworker.SpawnWeight3.Value, MimicNetworker.SpawnWeight4.Value, MimicNetworker.SpawnWeightMax.Value };
+
+                    int totalWeight = 0;
+                    foreach (int rate in spawnRates)
+                    {
+                        totalWeight += rate;
+                    }
+                    System.Random random = new System.Random(StartOfRound.Instance.randomMapSeed + 753);
+                    int randomSpawnRate = random.Next(0, totalWeight);
+
+                    int accumulatedWeight = 0;
+                    for (int i = 0; i < spawnRates.Length; i++)
+                    {
+                        if (randomSpawnRate < spawnRates[i] + accumulatedWeight)
+                        {
+                            numMimics = i;
+                            break;
+                        }
+                        accumulatedWeight += spawnRates[i];
+                    }
+
+                    if (numMimics == 5) // if the Max Mimics spawn rate rolled, just make numMimics absurdly large
+                    {
+                        numMimics = 999;
+                    }
+
+                    EntranceTeleport[] entranceTeleports = UnityEngine.Object.FindObjectsOfType<EntranceTeleport>(false);
+                    int fireExitCount = (entranceTeleports.Length - 2) / 2;
+                    if (MimicNetworker.SpawnRateDynamic.Value && numMimics < fireExitCount && fireExitCount > 1)
+                    {
+                        numMimics += random.Next(0, 2); // 50% chance to add another mimic if there isn't at least one for every fire exit and there's more than 1 fire exit on the moon
+                    }
+                    if (MimicNetworker.SpawnRateDynamic.Value && dungeon.AllTiles.Count > 100)
+                    {
+                        numMimics += random.Next(0, 2); // 50% chance to add another mimic if the dungeon is large
+                    }
+                }
 
                 List<Doorway> validDoors = new List<Doorway>();
                 foreach (Tile tile in dungeon.AllTiles)
@@ -180,33 +244,9 @@ namespace Mimics
                 List<Vector3> mimicLocations = new List<Vector3>();
                 foreach (Doorway doorway in validDoors)
                 {
-                    // Spawn a number of mimics based on the spawn weights
+                    if (mIndex >= numMimics)
                     {
-                        int numMimics = 0;
-
-                        int totalWeight = 0;
-                        foreach (int rate in SpawnRates)
-                        {
-                            totalWeight += rate;
-                        }
-                        System.Random random = new System.Random(StartOfRound.Instance.randomMapSeed + 753);
-                        int randomSpawnRate = random.Next(0, totalWeight);
-
-                        int accumulatedWeight = 0;
-                        for (int i = 0; i < SpawnRates.Length; i++)
-                        {
-                            if (randomSpawnRate < SpawnRates[i] + accumulatedWeight)
-                            {
-                                numMimics = i;
-                                break;
-                            }
-                            accumulatedWeight += SpawnRates[i];
-                        }
-
-                        if (numMimics == mIndex && numMimics != 6)
-                        {
-                            return;
-                        }
+                        return;
                     }
 
                     bool locationAlreadyUsed = false;
@@ -391,6 +431,14 @@ namespace Mimics
     public class MimicNetworker : NetworkBehaviour
     {
         public static MimicNetworker Instance;
+
+        public static NetworkVariable<int> SpawnWeight0 = new NetworkVariable<int>();
+        public static NetworkVariable<int> SpawnWeight1 = new NetworkVariable<int>();
+        public static NetworkVariable<int> SpawnWeight2 = new NetworkVariable<int>();
+        public static NetworkVariable<int> SpawnWeight3 = new NetworkVariable<int>();
+        public static NetworkVariable<int> SpawnWeight4 = new NetworkVariable<int>();
+        public static NetworkVariable<int> SpawnWeightMax = new NetworkVariable<int>();
+        public static NetworkVariable<bool> SpawnRateDynamic = new NetworkVariable<bool>();
 
         private void Awake()
         {
