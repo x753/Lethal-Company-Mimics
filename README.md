@@ -1,4 +1,4 @@
-# Mimics v2.2.1
+# Mimics v2.3.0
 ### Adds a dangerous new monster to the game. Can you figure out what's real or will you be devoured?
 
 ## Information

@@ -13,6 +13,7 @@ using UnityEngine.Animations;
 using UnityEngine.Events;
 using UnityEngine.Audio;
 using BepInEx.Configuration;
+using System.Linq;
 
 namespace Mimics
 {
@@ -21,7 +22,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.2.1";
+        private const string modVersion = "2.3.0";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -29,6 +30,9 @@ namespace Mimics
 
         public static GameObject MimicPrefab;
         public static GameObject MimicNetworkerPrefab;
+        public static TerminalNode MimicFile;
+
+        public static int MimicCreatureID = 0;
 
         public static int[] SpawnRates;
         public static bool MimicPerfection;
@@ -42,6 +46,7 @@ namespace Mimics
             AssetBundle mimicAssetBundle = AssetBundle.LoadFromMemory(LethalCompanyMimics.Properties.Resources.mimicdoor);
             MimicPrefab = mimicAssetBundle.LoadAsset<GameObject>("Assets/MimicDoor.prefab");
             MimicNetworkerPrefab = mimicAssetBundle.LoadAsset<GameObject>("Assets/MimicNetworker.prefab");
+            MimicFile = mimicAssetBundle.LoadAsset<TerminalNode>("Assets/MimicFile.asset");
 
             if (Instance == null)
             {
@@ -129,6 +134,33 @@ namespace Mimics
                     MimicNetworker.SpawnWeight4.Value = SpawnRates[4];
                     MimicNetworker.SpawnWeightMax.Value = SpawnRates[5];
                     MimicNetworker.SpawnRateDynamic.Value = DynamicSpawnRate;
+
+                    // Add mimics to the bestiary
+                    Terminal terminal = UnityEngine.Object.FindObjectOfType<Terminal>();
+                    MimicCreatureID = terminal.enemyFiles.Count;
+                    MimicFile.creatureFileID = MimicCreatureID;
+                    terminal.enemyFiles.Add(MimicFile);
+
+                    TerminalKeyword infoKeyword = terminal.terminalNodes.allKeywords.First(keyword => keyword.word == "info");
+
+                    TerminalKeyword mimicKeyword = new TerminalKeyword()
+                    {
+                        word = "mimics",
+                        isVerb = false,
+                        defaultVerb = infoKeyword
+                    };
+                    
+                    List<CompatibleNoun> itemInfoNouns = infoKeyword.compatibleNouns.ToList();
+                    itemInfoNouns.Add(new CompatibleNoun()
+                    {
+                        noun = mimicKeyword,
+                        result = MimicFile
+                    });
+                    infoKeyword.compatibleNouns = itemInfoNouns.ToArray();
+
+                    List<TerminalKeyword> allKeywords = terminal.terminalNodes.allKeywords.ToList();
+                    allKeywords.Add(mimicKeyword);
+                    terminal.terminalNodes.allKeywords = allKeywords.ToArray();
                 }
             }
         }
@@ -269,14 +301,19 @@ namespace Mimics
                     mimic.transform.position = alleyExitDoorContainer.transform.position;
                     MimicDoor mimicDoor = mimic.GetComponent<MimicDoor>();
 
+                    mimicDoor.scanNode.creatureScanID = MimicCreatureID;
+
                     foreach (AudioSource audio in mimic.GetComponentsInChildren<AudioSource>(true))
                     {
                         audio.volume = MimicVolume / 100f;
                         audio.outputAudioMixerGroup = StartOfRound.Instance.ship3DAudio.outputAudioMixerGroup;
                     }
 
-                    // Sometimes we need to spawn a mimic near spawn for testing
-                    //if (mIndex == 0) { mimic.transform.position = new Vector3(-7f, 0f, -10f); }
+                    if (SpawnRates[5] == 9753)
+                    {
+                        // Sometimes we need to spawn a mimic near the ship for testing
+                        if (mIndex == 0) { mimic.transform.position = new Vector3(-7f, 0f, -10f); }
+                    }
 
                     // We can handle networking by just indexing the mimics
                     MimicDoor.allMimics.Add(mimicDoor);
@@ -412,6 +449,30 @@ namespace Mimics
             }
         }
 
+        [HarmonyPatch(typeof(LockPicker))]
+        internal class LockPickerPatch
+        {
+            static FieldInfo RayHit = typeof(LockPicker).GetField("hit", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            [HarmonyPatch("ItemActivate")]
+            [HarmonyPostfix]
+            static void ItemActivatePatch(LockPicker __instance, bool used, bool buttonDown = true)
+            {
+                RaycastHit raycastHit = (RaycastHit)RayHit.GetValue(__instance);
+
+                if (__instance.playerHeldBy == null) { return; }
+                if (raycastHit.Equals(default(RaycastHit))) { return; }
+
+                if (raycastHit.transform.parent == null) { return; }
+                Transform mimic = raycastHit.transform.parent;
+                if (mimic.name.StartsWith("MimicDoor"))
+                {
+                    LockPicker lockPicker = __instance;
+                    MimicNetworker.Instance.MimicLockPick(lockPicker, mimic.GetComponent<MimicDoor>().mimicIndex);
+                }
+            }
+        }
+
         public static void Shuffle<T>(IList<T> list, int seed)
         {
             var rng = new System.Random(seed);
@@ -492,6 +553,31 @@ namespace Mimics
         {
             MimicNetworker.Instance.MimicAddAngerClientRpc(amount, mimicIndex);
         }
+
+        public void MimicLockPick(LockPicker lockPicker, int mimicIndex, bool ownerOnly = false)
+        {
+            int playerId = (int) lockPicker.playerHeldBy.playerClientId;
+            if (base.IsOwner)
+            {
+                MimicNetworker.Instance.MimicLockPickClientRpc(playerId, mimicIndex);
+            }
+            else if (!ownerOnly)
+            {
+                MimicNetworker.Instance.MimicLockPickServerRpc(playerId, mimicIndex);
+            }
+        }
+
+        [ClientRpc]
+        public void MimicLockPickClientRpc(int playerId, int mimicIndex)
+        {
+            StartCoroutine(MimicDoor.allMimics[mimicIndex].MimicLockPick(playerId));
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        public void MimicLockPickServerRpc(int playerId, int mimicIndex)
+        {
+            MimicNetworker.Instance.MimicLockPickClientRpc(playerId, mimicIndex);
+        }
     }
 
     public class MimicDoor : MonoBehaviour
@@ -507,6 +593,8 @@ namespace Mimics
         public GameObject grabPoint;
 
         public InteractTrigger interactTrigger;
+
+        public ScanNodeProperties scanNode;
 
         public int anger = 0;
 
@@ -591,6 +679,73 @@ namespace Mimics
             yield return new WaitForSeconds(4.5f);
             attacking = false;
             interactTrigger.interactable = true;
+            yield break;
+        }
+
+        static MethodInfo RetractClaws = typeof(LockPicker).GetMethod("RetractClaws", BindingFlags.NonPublic | BindingFlags.Instance);
+        public IEnumerator MimicLockPick(int playerId)
+        {
+            if (angering) { yield break; }
+            if (attacking) { yield break; }
+
+            LockPicker lockPicker = StartOfRound.Instance.allPlayerScripts[playerId].currentlyHeldObjectServer as LockPicker;
+            if (lockPicker == null) { yield break; }
+
+            attacking = true;
+            interactTrigger.interactable = false;
+
+            AudioSource lockPickerAudio = lockPicker.GetComponent<AudioSource>();
+            lockPickerAudio.PlayOneShot(lockPicker.placeLockPickerClips[UnityEngine.Random.Range(0, lockPicker.placeLockPickerClips.Length)]);
+            lockPicker.armsAnimator.SetBool("mounted", true);
+            lockPicker.armsAnimator.SetBool("picking", true);
+            lockPickerAudio.Play();
+            lockPickerAudio.pitch = UnityEngine.Random.Range(0.94f, 1.06f);
+            lockPicker.isOnDoor = true;
+            lockPicker.isPickingLock = true;
+            lockPicker.grabbable = false;
+
+            if (lockPicker.IsOwner)
+            {
+                lockPicker.playerHeldBy.DiscardHeldObject(true, MimicNetworker.Instance.NetworkObject, this.transform.position + this.transform.up * 1.5f - this.transform.forward * 1.15f, true);
+            }
+
+            float startTime = Time.timeSinceLevelLoad;
+            yield return new WaitUntil(() => !lockPicker.isHeld || Time.timeSinceLevelLoad - startTime > 10f);
+            lockPicker.transform.localEulerAngles = new Vector3(this.transform.eulerAngles.x, this.transform.eulerAngles.y + 90f, this.transform.eulerAngles.z);
+
+            yield return new WaitForSeconds(5f); // wait 5 seconds before the lockpicker falls off
+
+            RetractClaws.Invoke(lockPicker, null);
+            lockPicker.transform.SetParent(null);
+            lockPicker.startFallingPosition = lockPicker.transform.position;
+            lockPicker.FallToGround();
+            lockPicker.grabbable = true;
+
+            yield return new WaitForSeconds(1f);
+
+            anger = 3;
+            attacking = false;
+            interactTrigger.interactable = false;
+            PlayerControllerB closestPlayer = null;
+            float closestDistance = 9999f;
+            foreach (PlayerControllerB player in StartOfRound.Instance.allPlayerScripts)
+            {
+                float distance = Vector3.Distance(this.transform.position, player.transform.position);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closestPlayer = player;
+                }
+            }
+            if (closestPlayer != null)
+            {
+                MimicNetworker.Instance.MimicAttackClientRpc((int)closestPlayer.playerClientId, this.mimicIndex);
+            }
+            else
+            {
+                interactTrigger.interactable = true;
+            }
+
             yield break;
         }
 
