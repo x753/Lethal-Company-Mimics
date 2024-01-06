@@ -22,7 +22,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.3.0";
+        private const string modVersion = "2.3.1";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -121,6 +121,7 @@ namespace Mimics
             [HarmonyPostfix]
             static void StartPatch(ref StartOfRound __instance)
             {
+
                 // Handle networking with a single game object
                 if (__instance.IsServer && MimicNetworker.Instance == null)
                 {
@@ -134,9 +135,12 @@ namespace Mimics
                     MimicNetworker.SpawnWeight4.Value = SpawnRates[4];
                     MimicNetworker.SpawnWeightMax.Value = SpawnRates[5];
                     MimicNetworker.SpawnRateDynamic.Value = DynamicSpawnRate;
+                }
 
+                Terminal terminal = UnityEngine.Object.FindObjectOfType<Terminal>();
+                if (terminal.enemyFiles.Find(node => node.creatureName == "Mimics"))
+                {
                     // Add mimics to the bestiary
-                    Terminal terminal = UnityEngine.Object.FindObjectOfType<Terminal>();
                     MimicCreatureID = terminal.enemyFiles.Count;
                     MimicFile.creatureFileID = MimicCreatureID;
                     terminal.enemyFiles.Add(MimicFile);
@@ -149,7 +153,7 @@ namespace Mimics
                         isVerb = false,
                         defaultVerb = infoKeyword
                     };
-                    
+
                     List<CompatibleNoun> itemInfoNouns = infoKeyword.compatibleNouns.ToList();
                     itemInfoNouns.Add(new CompatibleNoun()
                     {
@@ -172,6 +176,8 @@ namespace Mimics
             [HarmonyPostfix]
             static void SetExitIDsPatch(ref RoundManager __instance, Vector3 mainEntrancePosition)
             {
+                if (MimicNetworker.Instance == null) { return; } // if the host doesn't have the mod, don't spawn mimics!
+
                 MimicDoor.allMimics = new List<MimicDoor>();
                 int mIndex = 0;
 
@@ -434,6 +440,8 @@ namespace Mimics
             [HarmonyPostfix]
             static void SprayPaintClientRpcPatch(SprayPaintItem __instance, Vector3 sprayPos, Vector3 sprayRot)
             {
+                if (MimicNetworker.Instance == null) { return; }
+
                 RaycastHit raycastHit = (RaycastHit) SprayHit.GetValue(__instance);
 
                 if (raycastHit.collider != null && raycastHit.collider.name == "MimicSprayCollider")
@@ -441,7 +449,7 @@ namespace Mimics
                     MimicDoor mimic = raycastHit.collider.transform.parent.parent.GetComponent<MimicDoor>();
                     mimic.sprayCount += 1;
 
-                    if (mimic.sprayCount > 9)
+                    if (mimic.sprayCount > 8)
                     {
                         MimicNetworker.Instance.MimicAddAnger(1, mimic.mimicIndex);
                     }
@@ -458,6 +466,8 @@ namespace Mimics
             [HarmonyPostfix]
             static void ItemActivatePatch(LockPicker __instance, bool used, bool buttonDown = true)
             {
+                if (MimicNetworker.Instance == null) { return; }
+
                 RaycastHit raycastHit = (RaycastHit)RayHit.GetValue(__instance);
 
                 if (__instance.playerHeldBy == null) { return; }
