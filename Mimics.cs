@@ -22,7 +22,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.3.1";
+        private const string modVersion = "2.4.0";
 
         private readonly Harmony harmony = new Harmony(modGUID);
 
@@ -41,6 +41,8 @@ namespace Mimics
         public static float MimicVolume;
         public static bool DynamicSpawnRate;
 
+        public static List<string> InteriorWhitelist;
+
         private void Awake()
         {
             AssetBundle mimicAssetBundle = AssetBundle.LoadFromMemory(LethalCompanyMimics.Properties.Resources.mimicdoor);
@@ -58,6 +60,9 @@ namespace Mimics
 
             // Handle configs
             {
+                string interiorWhitelistString = Config.Bind("Compatibility", "Whitelisted Interiors", "Level1Flow, Level1FlowExtraLarge, Level2Flow, OfficeDungeonFlow", "Comma separated list of interiors that mimics can spawn in. Not all interiors will work.").Value;
+                InteriorWhitelist = interiorWhitelistString.ToLower().Split(',').Select(s => s.Trim()).ToList();
+
                 SpawnRates = new int[] {
                     Config.Bind("Spawn Rate", "Zero Mimics", 23, "Weight of zero mimics spawning").Value,
                     Config.Bind("Spawn Rate", "One Mimic", 69, "Weight of one mimic spawning").Value,
@@ -136,9 +141,18 @@ namespace Mimics
                     MimicNetworker.SpawnWeightMax.Value = SpawnRates[5];
                     MimicNetworker.SpawnRateDynamic.Value = DynamicSpawnRate;
                 }
+            }
+        }
 
+        [HarmonyPatch(typeof(Terminal))]
+        internal class TerminalPatch
+        {
+            [HarmonyPatch("Start")]
+            [HarmonyPostfix]
+            static void StartPatch(ref StartOfRound __instance)
+            {
                 Terminal terminal = UnityEngine.Object.FindObjectOfType<Terminal>();
-                if (terminal.enemyFiles.Find(node => node.creatureName == "Mimics"))
+                if (!terminal.enemyFiles.Find(node => node.creatureName == "Mimics"))
                 {
                     // Add mimics to the bestiary
                     MimicCreatureID = terminal.enemyFiles.Count;
@@ -182,7 +196,8 @@ namespace Mimics
                 int mIndex = 0;
 
                 Dungeon dungeon = __instance.dungeonGenerator.Generator.CurrentDungeon;
-                if (!dungeon.DungeonFlow.name.StartsWith("Level1") && !dungeon.DungeonFlow.name.StartsWith("Level2")) { return; } // do not spawn mimics for custom dungeon flows
+
+                if (!InteriorWhitelist.Contains(dungeon.DungeonFlow.name.ToLower().Trim())) { return; } // do not spawn mimics for dungeon flows that aren't whitelisted
 
                 // Spawn a number of mimics based on the spawn weights
                 int numMimics = 0;
@@ -234,7 +249,9 @@ namespace Mimics
 
                         if (doorway.GetComponentInChildren<SpawnSyncedObject>(true) == null) { continue; }
                         GameObject alleyExitDoorContainer = doorway.GetComponentInChildren<SpawnSyncedObject>(true).transform.parent.gameObject;
+
                         if (!alleyExitDoorContainer.name.StartsWith("AlleyExitDoorContainer")) { continue; } // only put mimics where valid fire exits can be
+
                         if (alleyExitDoorContainer.activeSelf) { continue; } // skip the real fire exit
 
                         bool badPosition = false;
@@ -655,7 +672,7 @@ namespace Mimics
 
             yield return new WaitForSeconds(0.2f);
 
-            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 8.75f)
+            if (player.IsOwner && Vector3.Distance(player.transform.position, this.transform.position) < 8.45f)
             {
                 player.KillPlayer(Vector3.zero, true, CauseOfDeath.Unknown, 0);
             }
@@ -823,9 +840,10 @@ namespace Mimics
     {
         public MimicDoor mimic;
 
-        void IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false)
+        bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false)
         {
             MimicNetworker.Instance.MimicAddAnger(force, mimic.mimicIndex);
+            return true;
         }
     }
 
