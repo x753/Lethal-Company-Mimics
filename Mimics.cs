@@ -14,6 +14,8 @@ using UnityEngine.Events;
 using UnityEngine.Audio;
 using BepInEx.Configuration;
 using System.Linq;
+using BepInEx.Logging;
+using Mimics.API;
 
 namespace Mimics
 {
@@ -22,9 +24,10 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.4.0";
+        private const string modVersion = "2.6.1";
 
         private readonly Harmony harmony = new Harmony(modGUID);
+        internal static ManualLogSource MimicsLogger;
 
         private static Mimics Instance;
 
@@ -56,11 +59,12 @@ namespace Mimics
             }
 
             harmony.PatchAll();
-            Logger.LogInfo($"Plugin {modName} is loaded!");
+            MimicsLogger = BepInEx.Logging.Logger.CreateLogSource(modGUID);
+            MimicsLogger.LogInfo($"Plugin {modName} is loaded!!");
 
             // Handle configs
             {
-                string interiorWhitelistString = Config.Bind("Compatibility", "Whitelisted Interiors", "Level1Flow, Level1FlowExtraLarge, Level2Flow, OfficeDungeonFlow", "Comma separated list of interiors that mimics can spawn in. Not all interiors will work.").Value;
+                string interiorWhitelistString = Config.Bind("Compatibility", "Interiors Whitelist", "Level1Flow, Level1Flow3Exits, Level1FlowExtraLarge, Level2Flow, SDMLevel, OfficeDungeonFlow", "Comma separated list of interiors that mimics can spawn in. Not all interiors will work.").Value;
                 InteriorWhitelist = interiorWhitelistString.ToLower().Split(',').Select(s => s.Trim()).ToList();
 
                 SpawnRates = new int[] {
@@ -83,13 +87,6 @@ namespace Mimics
                 MimicVolume = Config.Bind("General", "SFX Volume", 100, "Volume of the mimic's SFX (0-100)").Value;
                 if (MimicVolume < 0) { MimicVolume = 0; }
                 if (MimicVolume > 100) { MimicVolume = 100; }
-
-                // This is necessary to delete old config entries that might confuse people
-                Config.Bind("Difficulty", "Difficulty Level", 0, "This is an old setting, ignore it.");
-                Config.Remove(Config["Difficulty", "Difficulty Level"].Definition);
-                Config.Bind("Spawn Rate", "Five Mimics", 0, "This is an old setting, ignore it.");
-                Config.Remove(Config["Spawn Rate", "Five Mimics"].Definition);
-                Config.Save();
             }
 
             // UnityNetcodeWeaver patch requires this
@@ -192,6 +189,8 @@ namespace Mimics
             {
                 if (MimicNetworker.Instance == null) { return; } // if the host doesn't have the mod, don't spawn mimics!
 
+                MimicsAPI.MainAPI.RefreshMimicEventHandler();
+
                 MimicDoor.allMimics = new List<MimicDoor>();
                 int mIndex = 0;
 
@@ -240,55 +239,71 @@ namespace Mimics
                     }
                 }
 
+                if (RoundManager.Instance.IsOwner)
+                {
+                    Debug.Log("I am the host. Desired mimics: " + numMimics);
+
+                }
+                else
+                {
+                Debug.Log("I am the client. Desired mimics: " + numMimics);
+                }
+
                 List<Doorway> validDoors = new List<Doorway>();
                 foreach (Tile tile in dungeon.AllTiles)
                 {
                     foreach (Doorway doorway in tile.UnusedDoorways)
                     {
-                        if (doorway.HasDoorPrefabInstance) { continue; } // can't spawn a mimic if there's already a door there
-
-                        if (doorway.GetComponentInChildren<SpawnSyncedObject>(true) == null) { continue; }
-                        GameObject alleyExitDoorContainer = doorway.GetComponentInChildren<SpawnSyncedObject>(true).transform.parent.gameObject;
-
-                        if (!alleyExitDoorContainer.name.StartsWith("AlleyExitDoorContainer")) { continue; } // only put mimics where valid fire exits can be
-
-                        if (alleyExitDoorContainer.activeSelf) { continue; } // skip the real fire exit
-
-                        bool badPosition = false;
-                        Matrix4x4 rotationMatrix = Matrix4x4.TRS(doorway.transform.position, doorway.transform.rotation, new Vector3(1f, 1f, 1f));
-                        Bounds bounds = new Bounds(new Vector3(0f, 1.5f, 5.5f), new Vector3(2f, 6f, 8f));
-                        bounds.center = rotationMatrix.MultiplyPoint3x4(bounds.center);
-                        Collider[] badPositionCheck = Physics.OverlapBox(bounds.center, bounds.extents, doorway.transform.rotation, LayerMask.GetMask("Room", "Railing", "MapHazards")); 
-                        foreach (Collider collider in badPositionCheck)
+                        if (!MimicsAPI.MainAPI.IgnoreDefaultPlacementValidation(doorway))
                         {
-                            badPosition = true;
-                            break;
-                        }
-                        if (badPosition) { continue; }
 
-                        foreach (Tile otherTile in dungeon.AllTiles)
-                        {
-                            if (tile == otherTile) { continue; }
-                            Vector3 mimicLocation = doorway.transform.position + 5 * doorway.transform.forward;
+                            if (doorway.HasDoorPrefabInstance) { continue; } // can't spawn a mimic if there's already a door there
 
-                            Bounds tileBounds = UnityUtil.CalculateProxyBounds(otherTile.gameObject, true, Vector3.up);
+                            if (doorway.GetComponentInChildren<SpawnSyncedObject>(true) == null) { continue; }
+                            GameObject alleyExitDoorContainer = doorway.GetComponentInChildren<SpawnSyncedObject>(true).transform.parent.gameObject;
 
-                            if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.up}))
+                            if (!alleyExitDoorContainer.name.StartsWith("AlleyExitDoorContainer")) { continue; } // only put mimics where valid fire exits can be
+
+                            if (alleyExitDoorContainer.activeSelf) { continue; } // skip the real fire exit
+
+                            bool badPosition = false;
+                            Matrix4x4 rotationMatrix = Matrix4x4.TRS(doorway.transform.position, doorway.transform.rotation, new Vector3(1f, 1f, 1f));
+                            Bounds bounds = new Bounds(new Vector3(0f, 1.5f, 5.5f), new Vector3(2f, 6f, 8f));
+                            bounds.center = rotationMatrix.MultiplyPoint3x4(bounds.center);
+                            Collider[] badPositionCheck = Physics.OverlapBox(bounds.center, bounds.extents, doorway.transform.rotation, LayerMask.GetMask("Room", "Railing", "MapHazards"));
+                            foreach (Collider collider in badPositionCheck)
                             {
-                                if (otherTile.name.Contains("Catwalk") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || (otherTile.name.Contains("StartRoom") && !otherTile.name.Contains("Manor")))
+                                badPosition = true;
+                                break;
+                            }
+                            if (badPosition) { continue; }
+
+                            foreach (Tile otherTile in dungeon.AllTiles)
+                            {
+                                if (tile == otherTile) { continue; }
+                                Vector3 mimicLocation = doorway.transform.position + 5 * doorway.transform.forward;
+
+                                Bounds tileBounds = UnityUtil.CalculateProxyBounds(otherTile.gameObject, true, Vector3.up);
+
+                                if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.up }))
                                 {
-                                    badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                    if (otherTile.name.Contains("Catwalk") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || (otherTile.name.Contains("StartRoom") && !otherTile.name.Contains("Manor")))
+                                    {
+                                        badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                    }
+                                }
+                                if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.down }))
+                                {
+                                    if (otherTile.name.Contains("MediumRoomHallway1B") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || otherTile.name.Contains("StartRoom"))
+                                    {
+                                        badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                    }
                                 }
                             }
-                            if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.down }))
-                            {
-                                if (otherTile.name.Contains("MediumRoomHallway1B") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || otherTile.name.Contains("StartRoom"))
-                                {
-                                    badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
-                                }
-                            }
+                            if (badPosition) { continue; }
                         }
-                        if (badPosition) { continue; }
+
+                        if (!MimicsAPI.MainAPI.IsPlacementValid(doorway)) continue;
 
                         validDoors.Add(doorway);
                     }
@@ -369,6 +384,14 @@ namespace Mimics
 
                     mimicDoor.interactTrigger.onInteract = new InteractEvent();
                     mimicDoor.interactTrigger.onInteract.AddListener(mimicDoor.TouchMimic);
+
+                    MimicsAPI.MainAPI.OnMimicCreated(mimicDoor, doorway);
+
+                    if (MimicsAPI.MainAPI.OverrideDefaultImperfectionCreation(mimicDoor, doorway))
+                    {
+                        MimicsAPI.MainAPI.OnMimicCreateImperfections(mimicDoor);
+                        return;
+                    }
 
                     // Handle all difficulty options here:
                     if (!MimicPerfection)
@@ -644,10 +667,11 @@ namespace Mimics
 
         public IEnumerator Attack(int playerId)
         {
+            PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
+            MimicsAPI.MainAPI.OnMimicAttackStart(this, player);
+
             attacking = true;
             interactTrigger.interactable = false;
-
-            PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
 
             mimicAnimator.SetTrigger("Attack");
 
@@ -706,6 +730,9 @@ namespace Mimics
             yield return new WaitForSeconds(4.5f);
             attacking = false;
             interactTrigger.interactable = true;
+
+            MimicsAPI.MainAPI.OnMimicAttackEnd(this);
+
             yield break;
         }
 
@@ -840,7 +867,7 @@ namespace Mimics
     {
         public MimicDoor mimic;
 
-        bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false)
+        bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
         {
             MimicNetworker.Instance.MimicAddAnger(force, mimic.mimicIndex);
             return true;
@@ -882,4 +909,205 @@ namespace Mimics
             }
         }
     }
+}
+
+namespace Mimics.API
+{
+
+    // The actual public API that users will touch
+    public static class MimicsAPI
+    {
+
+        private static MainMimicsAPI _API;
+        // We get our API through here (it has all the helper internal functions)
+        internal static MainMimicsAPI MainAPI
+        {
+            get
+            {
+                if (_API == null) _API = new MainMimicsAPI();
+                return _API;
+            }
+        }
+
+        // The user gets the API through here
+        public static IMimicsAPI GetAPI()
+        {
+            return MainAPI;
+        }
+
+    }
+
+    // the interface exists to make it harder to mess up the public API functions
+    // basically never change the functions in the interface
+    public interface IMimicsAPI
+    {
+        void RegisterMimicEventHandler(MimicEventHandler handler);
+        MimicEventHandler GetCurrentMimicEventHandler();
+    }
+
+    // the real API logic is here
+    internal class MainMimicsAPI : IMimicsAPI
+    {
+
+        internal List<MimicEventHandler> mimicEventHandlers = new List<MimicEventHandler>();
+        internal MimicEventHandler _currentMimicEventHandler;
+
+        // the public API functions that the user can use/call
+        public void RegisterMimicEventHandler(MimicEventHandler handler)
+        {
+            Mimics.MimicsLogger.LogInfo($"Registered handler for {handler.ModGUID}");
+            mimicEventHandlers.Add(handler);
+        }
+
+        public MimicEventHandler GetCurrentMimicEventHandler() => _currentMimicEventHandler;
+
+        // The following are helper functions to keep your code and this API code as separate as possible
+
+        // How we determine which mimic event handler to use
+        // It's just a bool and priority check
+        internal void RefreshMimicEventHandler()
+        {
+            _currentMimicEventHandler = null;
+            foreach (var m in mimicEventHandlers)
+            {
+                try
+                {
+                    // the bool check
+                    if (m.IsMyInteriorLoaded)
+                    {
+                        // the priority check
+                        if (_currentMimicEventHandler != null && m.Priority <= _currentMimicEventHandler.Priority)
+                        {
+                            continue;
+                        }
+
+                        _currentMimicEventHandler = m;
+                    }
+                }
+                catch (Exception e)
+                {
+                    var currentHandlerGUID = _currentMimicEventHandler != null ? _currentMimicEventHandler.ModGUID : "NULL";
+                    Mimics.MimicsLogger.LogError($"Error with IsMyInteriorLoaded/Priority function for handler {m.ModGUID} or {currentHandlerGUID}");
+                    Mimics.MimicsLogger.LogError(e.ToString());
+                }
+            }
+        }
+
+        internal bool IgnoreDefaultPlacementValidation(Doorway doorway)
+        {
+            try
+            {
+                if (_currentMimicEventHandler == null) return false;
+                return _currentMimicEventHandler.IgnoreDefaultPlacementValidation(doorway);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with IgnoreDefaultPlacementValidation function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+            return false;
+        }
+
+        internal bool IsPlacementValid(Doorway doorway)
+        {
+            try
+            {
+                if (_currentMimicEventHandler == null) return true;
+                return _currentMimicEventHandler.IsPlacementValid(doorway);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with IsPlacementValid function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+            return true;
+        }
+
+        internal bool OverrideDefaultImperfectionCreation(MimicDoor mimicDoor, Doorway doorway)
+        {
+            try
+            {
+                if (_currentMimicEventHandler == null) return false;
+                return _currentMimicEventHandler.OverrideDefaultImperfectionCreation(mimicDoor, doorway);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with OverrideDefaultImperfectionCreation function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+            return false;
+        }
+
+        internal void OnMimicCreated(MimicDoor mimicDoor, Doorway doorway)
+        {
+            try
+            {
+                _currentMimicEventHandler?.OnMimicCreated(mimicDoor, doorway);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with OnMimicCreated function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+        }
+
+        internal void OnMimicCreateImperfections(MimicDoor mimicDoor)
+        {
+            try
+            {
+                _currentMimicEventHandler?.OnMimicCreateImperfections(mimicDoor);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with OnMimicCreateImperfections function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+        }
+
+        internal void OnMimicAttackStart(MimicDoor mimicDoor, PlayerControllerB playerToAttack)
+        {
+            try
+            {
+                _currentMimicEventHandler?.OnMimicAttackStart(mimicDoor, playerToAttack);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with OnMimicAttackStart function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+        }
+
+        internal void OnMimicAttackEnd(MimicDoor mimicDoor)
+        {
+            try
+            {
+                _currentMimicEventHandler?.OnMimicAttackEnd(mimicDoor);
+            }
+            catch (Exception e)
+            {
+                Mimics.MimicsLogger.LogError($"Error with OnMimicAttackEnd function for handler {_currentMimicEventHandler.ModGUID}");
+                Mimics.MimicsLogger.LogError(e.ToString());
+            }
+        }
+
+    }
+
+    public abstract class MimicEventHandler
+    {
+
+
+        public abstract string ModGUID { get; }
+
+        public virtual bool IsMyInteriorLoaded => false;
+        public virtual int Priority => 0;
+        public virtual bool IsPlacementValid(Doorway doorway) => true;
+        public virtual bool IgnoreDefaultPlacementValidation(Doorway doorway) => false;
+        public virtual bool OverrideDefaultImperfectionCreation(MimicDoor mimicDoor, Doorway doorway) => false;
+
+        public virtual void OnMimicCreated(MimicDoor mimicDoor, Doorway doorway) { }
+        public virtual void OnMimicCreateImperfections(MimicDoor mimicDoor) { }
+        public virtual void OnMimicAttackStart(MimicDoor mimicDoor, PlayerControllerB playerToAttack) { }
+        public virtual void OnMimicAttackEnd(MimicDoor mimicDoor) { }
+    }
+
 }

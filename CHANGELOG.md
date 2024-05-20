@@ -1,3 +1,13 @@
+## v2.6.0 New API
+- Added a new API by https://thunderstore.io/c/lethal-company/p/Alice/ for creating custom mimics
+- For API support, go to the Mimics thread in the Lethal Company Modding Server https://discord.gg/XeyYqRdRGC https://discord.com/channels/1168655651455639582/1181019013409677312
+
+## v2.5.0 v50 Update
+- Updated for the v50 update
+
+## v2.4.1 Oops
+- Fixed broken networking from 2.4.0 update
+
 ## v2.4.0 Modded Interior Support
 - Added very limited support for modded interiors
 - Whitelist (certain) modded interiors in the config
