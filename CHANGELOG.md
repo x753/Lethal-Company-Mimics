@@ -1,3 +1,9 @@
+## v2.6.2 Tranquillity
+- Added Tranquillity to default whitelisted interiors
+
+## v2.6.2 Version 55
+- Updated for v55
+
 ## v2.6.0 New API
 - Added a new API by https://thunderstore.io/c/lethal-company/p/Alice/ for creating custom mimics
 - For API support, go to the Mimics thread in the Lethal Company Modding Server https://discord.gg/XeyYqRdRGC https://discord.com/channels/1168655651455639582/1181019013409677312

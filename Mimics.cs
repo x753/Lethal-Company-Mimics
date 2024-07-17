@@ -24,7 +24,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.6.1";
+        private const string modVersion = "2.6.3";
 
         private readonly Harmony harmony = new Harmony(modGUID);
         internal static ManualLogSource MimicsLogger;
@@ -64,7 +64,7 @@ namespace Mimics
 
             // Handle configs
             {
-                string interiorWhitelistString = Config.Bind("Compatibility", "Interiors Whitelist", "Level1Flow, Level1Flow3Exits, Level1FlowExtraLarge, Level2Flow, SDMLevel, OfficeDungeonFlow", "Comma separated list of interiors that mimics can spawn in. Not all interiors will work.").Value;
+                string interiorWhitelistString = Config.Bind("Compatibility", "Interiors Whitelist", "Level1Flow, Level1Flow3Exits, Level1FlowExtraLarge, Level2Flow, SDMLevel, OfficeDungeonFlow, TranquillityManorFlow", "Comma separated list of interiors that mimics can spawn in. Not all interiors will work.").Value;
                 InteriorWhitelist = interiorWhitelistString.ToLower().Split(',').Select(s => s.Trim()).ToList();
 
                 SpawnRates = new int[] {
