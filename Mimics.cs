@@ -24,7 +24,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.6.3";
+        private const string modVersion = "2.6.4";
 
         private readonly Harmony harmony = new Harmony(modGUID);
         internal static ManualLogSource MimicsLogger;
@@ -39,6 +39,7 @@ namespace Mimics
 
         public static int[] SpawnRates;
         public static bool MimicPerfection;
+        public static bool UpgradeCompatibility;
         public static bool EasyMode;
         public static bool ColorBlindMode;
         public static float MimicVolume;
@@ -79,6 +80,8 @@ namespace Mimics
                 DynamicSpawnRate = Config.Bind("Spawn Rate", "Dynamic Spawn Rate", true, "Increases mimic spawn rate based on dungeon size and the number of instances of the real thing.").Value;
 
                 MimicPerfection = Config.Bind("Difficulty", "Perfect Mimics", false, "Select this if you want mimics to be the exact same color as the real thing. Overrides all difficulty settings.").Value;
+
+                UpgradeCompatibility = Config.Bind("Difficulty", "Upgrade Compatibility", false, "Mimics won't instantly attack when struck with a powerful blow, such as an upgraded shovel.").Value;
 
                 EasyMode = Config.Bind("Difficulty", "Easy Mode", false, "Each mimic will have one of several possible imperfections to help you tell if it's a mimic.").Value;
 
@@ -869,6 +872,10 @@ namespace Mimics
 
         bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
         {
+            if(Mimics.UpgradeCompatibility)
+            {
+                force = 1;
+            }
             MimicNetworker.Instance.MimicAddAnger(force, mimic.mimicIndex);
             return true;
         }

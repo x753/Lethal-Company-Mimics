@@ -1,4 +1,7 @@
-## v2.6.2 Tranquillity
+## v2.6.4 Compatiblity Config
+- Added a "Upgrade Compatibility" config option that makes mimics attack after multiple hits, regardless of how powerful of a force they were hit with (upgraded shovels, etc)
+
+## v2.6.3 Tranquillity
 - Added Tranquillity to default whitelisted interiors
 
 ## v2.6.2 Version 55
