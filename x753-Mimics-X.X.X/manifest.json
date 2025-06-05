@@ -1,0 +1,9 @@
+{
+    "name": "Mimics",
+    "version_number": "2.7.0",
+    "website_url": "https://github.com/x753/Lethal-Company-Mimics",
+    "description": "Adds a dangerous new monster to the game. Can you figure out what's real or will you be devoured?",
+    "dependencies": [
+        "BepInEx-BepInExPack-5.4.2100"
+    ]
+}
