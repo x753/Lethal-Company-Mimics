@@ -1,3 +1,6 @@
+## Netcode Patcher fix
+- Updated for v73
+
 ## v2.7.0 Project clean up
 - Updated for v71
 - Internal changes (publicized assembly, non-static network variables)

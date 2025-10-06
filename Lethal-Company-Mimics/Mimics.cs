@@ -5,14 +5,9 @@ using HarmonyLib;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Events;
-using UnityEngine.Audio;
-using BepInEx.Configuration;
 using System.Linq;
 using BepInEx.Logging;
 using Mimics.API;
@@ -24,7 +19,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.7.0";
+        private const string modVersion = "2.7.1";
 
         private readonly Harmony harmony = new Harmony(modGUID);
         internal static ManualLogSource MimicsLogger;

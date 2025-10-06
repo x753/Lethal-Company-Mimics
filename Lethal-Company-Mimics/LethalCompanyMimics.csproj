@@ -4,7 +4,7 @@
         <TargetFramework>netstandard2.1</TargetFramework>
         <AssemblyName>Mimics</AssemblyName>
         <Description>A mod for Lethal Company that adds a dangerous new enemy</Description>
-        <Version>2.7.0</Version>
+        <Version>2.7.1</Version>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
     </PropertyGroup>
@@ -20,13 +20,13 @@
 	
     <ItemGroup>
       <Reference Include="0Harmony">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\BepInEx\core\0Harmony.dll</HintPath>
+        <HintPath>..\..\..\Users\Steve\AppData\Roaming\Thunderstore Mod Manager\DataFolder\LethalCompany\profiles\Default\BepInEx\core\0Harmony.dll</HintPath>
       </Reference>
       <Reference Include="Assembly-CSharp">
-        <HintPath>..\..\..\..\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\publicized_assemblies\Assembly-CSharp_publicized.dll</HintPath>
+        <HintPath>..\..\..\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\publicized_assemblies\Assembly-CSharp_publicized.dll</HintPath>
       </Reference>
       <Reference Include="BepInEx">
-        <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\BepInEx\core\BepInEx.dll</HintPath>
+        <HintPath>..\..\..\Users\Steve\AppData\Roaming\Thunderstore Mod Manager\DataFolder\LethalCompany\profiles\Default\BepInEx\core\BepInEx.dll</HintPath>
       </Reference>
       <Reference Include="Unity.Netcode.Components">
         <HintPath>..\..\..\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\Unity.Netcode.Components.dll</HintPath>
@@ -70,6 +70,6 @@
     </ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="netcode-patch -nv 1.5.2 &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\BepInEx\plugins&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;..\x753-Mimics-X.X.X\BepInEx\plugins&quot;" />
+		<Exec Command="netcode-patch -nv 1.12.0 &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;C:\Users\Steve\AppData\Roaming\Thunderstore Mod Manager\DataFolder\LethalCompany\profiles\Default\BepInEx\plugins&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;..\x753-Mimics-X.X.X\BepInEx\plugins&quot;" />
 	</Target>
 </Project>
