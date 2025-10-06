@@ -19,7 +19,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.7.1";
+        private const string modVersion = "2.7.2";
 
         private readonly Harmony harmony = new Harmony(modGUID);
         internal static ManualLogSource MimicsLogger;

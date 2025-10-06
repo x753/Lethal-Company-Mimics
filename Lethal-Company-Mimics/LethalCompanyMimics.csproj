@@ -4,7 +4,7 @@
         <TargetFramework>netstandard2.1</TargetFramework>
         <AssemblyName>Mimics</AssemblyName>
         <Description>A mod for Lethal Company that adds a dangerous new enemy</Description>
-        <Version>2.7.1</Version>
+        <Version>2.7.2</Version>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
     </PropertyGroup>
@@ -70,6 +70,6 @@
     </ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="netcode-patch -nv 1.12.0 &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;C:\Users\Steve\AppData\Roaming\Thunderstore Mod Manager\DataFolder\LethalCompany\profiles\Default\BepInEx\plugins&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;..\x753-Mimics-X.X.X\BepInEx\plugins&quot;" />
+		<Exec Command="netcode-patch -uv 2022.3.62 -nv 1.12.0 &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\Lethal Company\Lethal Company_Data&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;C:\Users\Steve\AppData\Roaming\Thunderstore Mod Manager\DataFolder\LethalCompany\profiles\Default\BepInEx\plugins&quot; &amp;&amp; xcopy /y &quot;$(TargetPath)&quot; &quot;..\x753-Mimics-X.X.X\BepInEx\plugins&quot;" />
 	</Target>
 </Project>
