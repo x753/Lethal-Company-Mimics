@@ -1,3 +1,6 @@
+## v2.7.3 Update
+- Updated for v81
+
 ## v2.7.2 Netcode Patcher fix
 - Updated for v73
 

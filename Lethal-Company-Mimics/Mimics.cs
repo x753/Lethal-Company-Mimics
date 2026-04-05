@@ -19,7 +19,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.7.2";
+        private const string modVersion = "2.7.3";
 
         private readonly Harmony harmony = new Harmony(modGUID);
         internal static ManualLogSource MimicsLogger;
@@ -156,11 +156,7 @@ namespace Mimics
                     };
 
                     List<CompatibleNoun> itemInfoNouns = infoKeyword.compatibleNouns.ToList();
-                    itemInfoNouns.Add(new CompatibleNoun()
-                    {
-                        noun = mimicKeyword,
-                        result = MimicFile
-                    });
+                    itemInfoNouns.Add(new CompatibleNoun(mimicKeyword, MimicFile));
                     infoKeyword.compatibleNouns = itemInfoNouns.ToArray();
 
                     List<TerminalKeyword> allKeywords = terminal.terminalNodes.allKeywords.ToList();
@@ -272,22 +268,26 @@ namespace Mimics
                                 if (tile == otherTile) { continue; }
                                 Vector3 mimicLocation = doorway.transform.position + 5 * doorway.transform.forward;
 
-                                Bounds tileBounds = UnityUtil.CalculateProxyBounds(otherTile.gameObject, true, Vector3.up);
+                                Renderer tileRenderer = otherTile.GetComponent<Renderer>();
+                                if (tileRenderer != null)
+                                {
+                                    Bounds tileBounds = tileRenderer.bounds;
 
-                                if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.up }))
-                                {
-                                    if (otherTile.name.Contains("Catwalk") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || (otherTile.name.Contains("StartRoom") && !otherTile.name.Contains("Manor")))
+                                    if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.up }))
                                     {
-                                        badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                        if (otherTile.name.Contains("Catwalk") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || (otherTile.name.Contains("StartRoom") && !otherTile.name.Contains("Manor")))
+                                        {
+                                            badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                        }
                                     }
-                                }
-                                if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.down }))
-                                {
-                                    if (otherTile.name.Contains("MediumRoomHallway1B") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || otherTile.name.Contains("StartRoom"))
+                                    if (tileBounds.IntersectRay(new Ray() { origin = mimicLocation, direction = Vector3.down }))
                                     {
-                                        badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                        if (otherTile.name.Contains("MediumRoomHallway1B") || otherTile.name.Contains("LargeForkTile") || otherTile.name.Contains("4x4BigStair") || otherTile.name.Contains("ElevatorConnector") || otherTile.name.Contains("StartRoom"))
+                                        {
+                                            badPosition = true; // LargeForkTileB has way bigger bounds than it should which kills some mimics it shouldn't
+                                        }
                                     }
-                                }
+                                }                                
                             }
                             if (badPosition) { continue; }
                         }
