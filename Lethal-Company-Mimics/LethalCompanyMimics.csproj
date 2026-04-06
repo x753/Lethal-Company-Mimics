@@ -4,7 +4,7 @@
         <TargetFramework>netstandard2.1</TargetFramework>
         <AssemblyName>Mimics</AssemblyName>
         <Description>A mod for Lethal Company that adds a dangerous new enemy</Description>
-        <Version>2.7.3</Version>
+        <Version>2.7.4</Version>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
     </PropertyGroup>

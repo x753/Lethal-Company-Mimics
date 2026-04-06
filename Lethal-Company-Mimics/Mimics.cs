@@ -19,7 +19,7 @@ namespace Mimics
     {
         private const string modGUID = "x753.Mimics";
         private const string modName = "Mimics";
-        private const string modVersion = "2.7.3";
+        private const string modVersion = "2.7.4";
 
         private readonly Harmony harmony = new Harmony(modGUID);
         internal static ManualLogSource MimicsLogger;
@@ -262,6 +262,12 @@ namespace Mimics
                                 break;
                             }
                             if (badPosition) { continue; }
+
+                            if (doorway.transform.GetChild(0).name.Contains("HallwayBlocker"))
+                            {
+                                badPosition = true;
+                                continue;
+                            }
 
                             foreach (Tile otherTile in dungeon.AllTiles)
                             {

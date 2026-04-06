@@ -1,3 +1,6 @@
+## v2.7.4 Factory bad spawn locations fix
+- Fixed some bad spawn locations in the Factory interior
+
 ## v2.7.3 Update
 - Updated for v81
 
